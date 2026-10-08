@@ -6,6 +6,15 @@
 #include <cstdlib>
 
 #include <vector>
+#include <optional>
+
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphicsFamily;
+
+    bool isComplete () {
+        return graphicsFamily.has_value ();
+    }
+};
 
 class HelloTriangleApplication {
 
@@ -183,6 +192,72 @@ private:
         }
     }
 
+    QueueFamilyIndices findQueueFamilies (VkPhysicalDevice device) {
+        QueueFamilyIndices indices;
+        // Logic to find queue family indices to populate struct with
+
+        // 获取物理设备的队列族数量
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties (device, &queueFamilyCount, nullptr);
+
+        std::vector<VkQueueFamilyProperties> queueFamilies (queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties (device, &queueFamilyCount, queueFamilies.data ());
+
+        int i = 0;
+        for (const auto& queueFamily : queueFamilies) {
+            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphicsFamily = i;
+            }
+
+            if (indices.isComplete ()) {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
+    }
+
+    bool isDeviceSuitable (VkPhysicalDevice device) {
+		// 查询设备属性和特性
+        VkPhysicalDeviceProperties deviceProperties;
+        VkPhysicalDeviceFeatures deviceFeatures;
+        vkGetPhysicalDeviceProperties (device, &deviceProperties);
+        vkGetPhysicalDeviceFeatures (device, &deviceFeatures);
+		// 检查设备是否支持所需的队列族
+        QueueFamilyIndices indices = findQueueFamilies (device);
+
+		// 只要设备支持图形队列族，就认为它是合适的
+        return indices.isComplete ();
+
+        //return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+        //    deviceFeatures.geometryShader;
+    }
+
+    void pickPhysicalDevice () {
+		// 获取物理设备数量
+        uint32_t deviceCount = 0;
+        vkEnumeratePhysicalDevices (instance, &deviceCount, nullptr);
+        if (deviceCount == 0) {
+            throw std::runtime_error ("failed to find GPUs with Vulkan support!");
+        }
+		// 获取物理设备列表
+        std::vector<VkPhysicalDevice> devices (deviceCount);
+        vkEnumeratePhysicalDevices (instance, &deviceCount, devices.data ());
+
+        for (const auto& device : devices) {
+            if (isDeviceSuitable (device)) {
+                physicalDevice = device;
+                break;
+            }
+        }
+
+        if (physicalDevice == VK_NULL_HANDLE) {
+            throw std::runtime_error ("failed to find a suitable GPU!");
+        }
+    }
+
     // ---------------------------------------------
     void initWindow () {
 		// 初始化GLFW库
@@ -197,6 +272,7 @@ private:
     void initVulkan () {
         createInstance ();
         setupDebugMessenger ();
+        pickPhysicalDevice ();
     }
 
     void mainLoop () {
@@ -228,6 +304,8 @@ private:
     VkInstance instance;
 	// Vulkan调试信息回调
     VkDebugUtilsMessengerEXT debugMessenger;
+	// Vulkan物理设备
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 };
 
 int main () {
