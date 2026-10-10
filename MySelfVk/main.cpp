@@ -1,5 +1,8 @@
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -8,11 +11,14 @@
 #include <vector>
 #include <optional>
 
+#include <set>
+
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
 
     bool isComplete () {
-        return graphicsFamily.has_value ();
+        return graphicsFamily.has_value () && presentFamily.has_value ();
     }
 };
 
@@ -192,6 +198,12 @@ private:
         }
     }
 
+    void createSurface () {
+        if (glfwCreateWindowSurface (instance, window, nullptr, &surface) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to create window surface!");
+        }
+    }
+
     QueueFamilyIndices findQueueFamilies (VkPhysicalDevice device) {
         QueueFamilyIndices indices;
         // Logic to find queue family indices to populate struct with
@@ -214,6 +226,12 @@ private:
             }
 
             i++;
+        }
+
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR (device, i, surface, &presentSupport);
+        if (presentSupport) {
+            indices.presentFamily = i;
         }
 
         return indices;
@@ -262,13 +280,18 @@ private:
 		// 获取物理设备的队列族索引
         QueueFamilyIndices indices = findQueueFamilies (physicalDevice);
 		// 创建逻辑设备的队列创建信息
-        VkDeviceQueueCreateInfo queueCreateInfo{};
-        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value ();
-        queueCreateInfo.queueCount = 1;
-		// 设置队列优先级
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+        std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value (), indices.presentFamily.value () };
         float queuePriority = 1.0f;
-        queueCreateInfo.pQueuePriorities = &queuePriority;
+        for (uint32_t queueFamily : uniqueQueueFamilies) {
+            VkDeviceQueueCreateInfo queueCreateInfo{};
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = queueFamily;
+            queueCreateInfo.queueCount = 1;
+			// 设置队列优先级
+            queueCreateInfo.pQueuePriorities = &queuePriority;
+            queueCreateInfos.push_back (queueCreateInfo);
+        }
 
         VkPhysicalDeviceFeatures deviceFeatures{};
 
@@ -276,8 +299,8 @@ private:
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 		// 填入队列创建信息
-        createInfo.pQueueCreateInfos = &queueCreateInfo;
-        createInfo.queueCreateInfoCount = 1;
+        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size ());
+        createInfo.pQueueCreateInfos = queueCreateInfos.data ();
 		// 填入设备特性
         createInfo.pEnabledFeatures = &deviceFeatures;
 
@@ -297,6 +320,7 @@ private:
         }
 
         vkGetDeviceQueue (device, indices.graphicsFamily.value (), 0, &graphicsQueue);
+        vkGetDeviceQueue (device, indices.presentFamily.value (), 0, &presentQueue);
     }
 
     // ---------------------------------------------
@@ -313,6 +337,7 @@ private:
     void initVulkan () {
         createInstance ();
         setupDebugMessenger ();
+        createSurface ();
         pickPhysicalDevice ();
         createLogicalDevice ();
     }
@@ -334,6 +359,8 @@ private:
             DestroyDebugUtilsMessengerEXT (instance, debugMessenger, nullptr);
         }
 
+		// 销毁窗口表面
+        vkDestroySurfaceKHR (instance, surface, nullptr);
 		// 销毁Vulkan实例
         vkDestroyInstance (instance, nullptr);
 		// 销毁窗口和终止GLFW
@@ -355,6 +382,10 @@ private:
     VkDevice device;
 	// Vulkan图形队列 from logical device
     VkQueue graphicsQueue;
+	// Vulkan呈现队列 from logical device
+    VkQueue presentQueue;
+    // Vulkan窗口表面
+    VkSurfaceKHR surface;
 };
 
 int main () {
