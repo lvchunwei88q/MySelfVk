@@ -488,6 +488,37 @@ private:
         vkGetSwapchainImagesKHR (device, swapChain, &imageCount, nullptr);
         swapChainImages.resize (imageCount);
         vkGetSwapchainImagesKHR (device, swapChain, &imageCount, swapChainImages.data ());
+
+		// 保存交换链图像格式和范围
+        swapChainImageFormat = surfaceFormat.format;
+        swapChainExtent = extent;
+    }
+
+    void createImageViews () {
+        swapChainImageViews.resize (swapChainImages.size ());
+        for (size_t i = 0; i < swapChainImages.size (); i++) {
+            VkImageViewCreateInfo createInfo{};
+            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            createInfo.image = swapChainImages[i];
+			// 视图类型为2D纹理
+            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            createInfo.format = swapChainImageFormat;
+			// 设置颜色通道映射
+            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+			// 设置子资源范围
+            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            createInfo.subresourceRange.baseMipLevel = 0;
+            createInfo.subresourceRange.levelCount = 1;
+            createInfo.subresourceRange.baseArrayLayer = 0;
+            createInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView (device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+                throw std::runtime_error ("failed to create image views!");
+            }
+        }
     }
 
     // ---------------------------------------------
@@ -508,6 +539,7 @@ private:
         pickPhysicalDevice ();
         createLogicalDevice ();
         createSwapChain ();
+        createImageViews ();
     }
 
     void mainLoop () {
@@ -519,6 +551,10 @@ private:
     }
 
     void cleanup () {
+		// 销毁交换链图像视图
+        for (auto imageView : swapChainImageViews) {
+            vkDestroyImageView (device, imageView, nullptr);
+        }
 		// 销毁交换链
         vkDestroySwapchainKHR (device, swapChain, nullptr);
 		// 销毁逻辑设备
@@ -560,6 +596,12 @@ private:
     VkSwapchainKHR swapChain;
 	// Vulkan交换链图像列表
     std::vector<VkImage> swapChainImages;
+	// Vulkan交换链图像格式
+    VkFormat swapChainImageFormat;
+	// Vulkan交换链图像范围
+    VkExtent2D swapChainExtent;
+	// Vulkan交换链图像视图列表
+    std::vector<VkImageView> swapChainImageViews;
 };
 
 int main () {
