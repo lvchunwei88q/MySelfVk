@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="MySelfVk/MySelfVk.vcxproj" />
+  <Project Path="MySelfVk/MySelfVk.vcxproj" Id="7a3d5b85-87a1-401f-ad7b-02d6ec4d7994" />
 </Solution>

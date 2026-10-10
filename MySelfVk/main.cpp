@@ -258,6 +258,47 @@ private:
         }
     }
 
+    void createLogicalDevice () {
+		// 获取物理设备的队列族索引
+        QueueFamilyIndices indices = findQueueFamilies (physicalDevice);
+		// 创建逻辑设备的队列创建信息
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value ();
+        queueCreateInfo.queueCount = 1;
+		// 设置队列优先级
+        float queuePriority = 1.0f;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+
+        VkPhysicalDeviceFeatures deviceFeatures{};
+
+		// 创建逻辑设备创建信息
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		// 填入队列创建信息
+        createInfo.pQueueCreateInfos = &queueCreateInfo;
+        createInfo.queueCreateInfoCount = 1;
+		// 填入设备特性
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        createInfo.enabledExtensionCount = 0;
+        createInfo.enabledLayerCount = 0;
+       //     if (enableValidationLayers) {
+			    //// 启动验证层
+       //         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size ());
+       //         createInfo.ppEnabledLayerNames = validationLayers.data ();
+       //     }
+       //     else {
+       //         createInfo.enabledLayerCount = 0;
+       //     }
+		// 创建逻辑设备
+        if (vkCreateDevice (physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to create logical device!");
+        }
+
+        vkGetDeviceQueue (device, indices.graphicsFamily.value (), 0, &graphicsQueue);
+    }
+
     // ---------------------------------------------
     void initWindow () {
 		// 初始化GLFW库
@@ -273,6 +314,7 @@ private:
         createInstance ();
         setupDebugMessenger ();
         pickPhysicalDevice ();
+        createLogicalDevice ();
     }
 
     void mainLoop () {
@@ -284,6 +326,9 @@ private:
     }
 
     void cleanup () {
+		// 销毁逻辑设备
+        vkDestroyDevice (device, nullptr);
+
 		// 销毁调试信使
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT (instance, debugMessenger, nullptr);
@@ -306,6 +351,10 @@ private:
     VkDebugUtilsMessengerEXT debugMessenger;
 	// Vulkan物理设备
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+	// Vulkan逻辑设备
+    VkDevice device;
+	// Vulkan图形队列 from logical device
+    VkQueue graphicsQueue;
 };
 
 int main () {
