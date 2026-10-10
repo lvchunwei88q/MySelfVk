@@ -521,6 +521,11 @@ private:
         }
     }
 
+	// 创建图形管线
+    void createGraphicsPipeline () {
+
+    }
+
     // ---------------------------------------------
     void initWindow () {
 		// 初始化GLFW库
@@ -540,6 +545,7 @@ private:
         createLogicalDevice ();
         createSwapChain ();
         createImageViews ();
+        createGraphicsPipeline ();
     }
 
     void mainLoop () {
