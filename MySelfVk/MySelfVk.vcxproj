@@ -148,6 +148,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="compile.bat" />
     <None Include="shader_base.frag" />
     <None Include="shader_base.vert" />
   </ItemGroup>

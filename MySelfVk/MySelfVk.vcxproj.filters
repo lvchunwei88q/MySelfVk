@@ -22,5 +22,8 @@
   <ItemGroup>
     <None Include="shader_base.vert" />
     <None Include="shader_base.frag" />
+    <None Include="compile.bat">
+      <Filter>源文件</Filter>
+    </None>
   </ItemGroup>
 </Project>
