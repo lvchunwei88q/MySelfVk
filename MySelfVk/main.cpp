@@ -718,6 +718,30 @@ private:
             throw std::runtime_error ("failed to create pipeline layout!");
         }
 
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shaderStages;
+		// 设置图形管线的各个状态信息
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pDepthStencilState = nullptr; // Optional
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+		// 设置图形管线布局和渲染通道
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.renderPass = renderPass;
+        pipelineInfo.subpass = 0;
+		// 设置图形管线的基础管线信息
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+        pipelineInfo.basePipelineIndex = -1; // Optional
+
+        if (vkCreateGraphicsPipelines (device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to create graphics pipeline!");
+        }
 
         vkDestroyShaderModule (device, fragShaderModule, nullptr);
         vkDestroyShaderModule (device, vertShaderModule, nullptr);
@@ -755,6 +779,8 @@ private:
     }
 
     void cleanup () {
+		// 销毁图形管线
+        vkDestroyPipeline (device, graphicsPipeline, nullptr);
 		// 销毁图形管线布局
         vkDestroyPipelineLayout (device, pipelineLayout, nullptr);
 		// 销毁图形管线
@@ -813,6 +839,8 @@ private:
 	// Vulkan图形管线布局与渲染Pass相关
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
+	// Vulkan图形管线
+    VkPipeline graphicsPipeline;
 };
 
 int main () {
