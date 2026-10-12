@@ -539,6 +539,45 @@ private:
         }
     }
 
+    void createRenderPass () {
+		// 创建渲染通道的颜色附件描述
+        VkAttachmentDescription colorAttachment{};
+        colorAttachment.format = swapChainImageFormat;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		// 设置加载操作为清除，存储操作为存储
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		// 设置模板加载和存储操作为不关心
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		// 设置初始布局为未定义，最终布局为呈现源
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		// 创建渲染通道的颜色附件引用
+        VkAttachmentReference colorAttachmentRef{};
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		// 创建子通道描述
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		// 设置子通道的颜色附件引用
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+
+        VkRenderPassCreateInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = 1;
+        renderPassInfo.pAttachments = &colorAttachment;
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+
+        if (vkCreateRenderPass (device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to create render pass!");
+        }
+    }
+
 	// 创建着色器模块
     VkShaderModule createShaderModule (const std::vector<char>& code) {
         VkShaderModuleCreateInfo createInfo{};
@@ -703,6 +742,7 @@ private:
         createLogicalDevice ();
         createSwapChain ();
         createImageViews ();
+        createRenderPass ();
         createGraphicsPipeline ();
     }
 
@@ -717,6 +757,8 @@ private:
     void cleanup () {
 		// 销毁图形管线布局
         vkDestroyPipelineLayout (device, pipelineLayout, nullptr);
+		// 销毁图形管线
+        vkDestroyRenderPass (device, renderPass, nullptr);
 		// 销毁交换链图像视图
         for (auto imageView : swapChainImageViews) {
             vkDestroyImageView (device, imageView, nullptr);
@@ -768,7 +810,8 @@ private:
     VkExtent2D swapChainExtent;
 	// Vulkan交换链图像视图列表
     std::vector<VkImageView> swapChainImageViews;
-	// Vulkan图形管线布局
+	// Vulkan图形管线布局与渲染Pass相关
+    VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
 };
 
