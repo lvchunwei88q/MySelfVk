@@ -747,6 +747,30 @@ private:
         vkDestroyShaderModule (device, vertShaderModule, nullptr);
     }
 
+    void createFramebuffers () {
+		// 分配交换链帧缓冲列表的大小
+        swapChainFramebuffers.resize (swapChainImageViews.size ());
+
+        for (size_t i = 0; i < swapChainImageViews.size (); i++) {
+            VkImageView attachments[] = {
+                swapChainImageViews[i]
+            };
+
+            VkFramebufferCreateInfo framebufferInfo{};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = renderPass;
+            framebufferInfo.attachmentCount = 1;
+            framebufferInfo.pAttachments = attachments;
+            framebufferInfo.width = swapChainExtent.width;
+            framebufferInfo.height = swapChainExtent.height;
+            framebufferInfo.layers = 1;
+
+            if (vkCreateFramebuffer (device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+                throw std::runtime_error ("failed to create framebuffer!");
+            }
+        }
+    }
+
     // ---------------------------------------------
     void initWindow () {
 		// 初始化GLFW库
@@ -768,6 +792,7 @@ private:
         createImageViews ();
         createRenderPass ();
         createGraphicsPipeline ();
+        createFramebuffers ();
     }
 
     void mainLoop () {
@@ -779,6 +804,10 @@ private:
     }
 
     void cleanup () {
+		// 销毁交换链帧缓冲
+        for (auto framebuffer : swapChainFramebuffers) {
+            vkDestroyFramebuffer (device, framebuffer, nullptr);
+        }
 		// 销毁图形管线
         vkDestroyPipeline (device, graphicsPipeline, nullptr);
 		// 销毁图形管线布局
@@ -836,6 +865,8 @@ private:
     VkExtent2D swapChainExtent;
 	// Vulkan交换链图像视图列表
     std::vector<VkImageView> swapChainImageViews;
+    // Vulkan交换链帧缓冲列表
+    std::vector<VkFramebuffer> swapChainFramebuffers;
 	// Vulkan图形管线布局与渲染Pass相关
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
