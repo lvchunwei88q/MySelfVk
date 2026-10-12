@@ -771,6 +771,84 @@ private:
         }
     }
 
+    void createCommandPool () {
+        QueueFamilyIndices queueFamilyIndices = findQueueFamilies (physicalDevice);
+		// 创建命令池信息
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value ();
+
+        if (vkCreateCommandPool (device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to create command pool!");
+        }
+    }
+
+    void createCommandBuffer () {
+		// 分配命令缓冲信息
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = commandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = 1;
+
+        if (vkAllocateCommandBuffers (device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to allocate command buffers!");
+        }
+    }
+
+    void recordCommandBuffer (VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = 0; // Optional
+        beginInfo.pInheritanceInfo = nullptr; // Optional
+		// 开始记录命令缓冲
+        if (vkBeginCommandBuffer (commandBuffer, &beginInfo) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to begin recording command buffer!");
+        }
+
+		// 开始渲染通道信息
+        VkRenderPassBeginInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = renderPass;
+        renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+		// 设置渲染区域
+        renderPassInfo.renderArea.offset = { 0, 0 };
+        renderPassInfo.renderArea.extent = swapChainExtent;
+		// 设置清除颜色
+        VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
+        renderPassInfo.clearValueCount = 1;
+        renderPassInfo.pClearValues = &clearColor;
+		// 开始渲染通道
+        vkCmdBeginRenderPass (commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		// 绑定图形管线
+        vkCmdBindPipeline (commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+		// 设置视口和裁剪矩形
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(swapChainExtent.width);
+        viewport.height = static_cast<float>(swapChainExtent.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport (commandBuffer, 0, 1, &viewport);
+		// 设置裁剪矩形
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = swapChainExtent;
+        vkCmdSetScissor (commandBuffer, 0, 1, &scissor);
+		// 绘制三角形
+        vkCmdDraw (commandBuffer, 3, 1, 0, 0);
+
+		// 结束渲染通道
+        vkCmdEndRenderPass (commandBuffer);
+		// 结束记录命令缓冲
+        if (vkEndCommandBuffer (commandBuffer) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to record command buffer!");
+        }
+    }
+
     // ---------------------------------------------
     void initWindow () {
 		// 初始化GLFW库
@@ -793,6 +871,8 @@ private:
         createRenderPass ();
         createGraphicsPipeline ();
         createFramebuffers ();
+        createCommandPool ();
+        createCommandBuffer ();
     }
 
     void mainLoop () {
@@ -804,6 +884,8 @@ private:
     }
 
     void cleanup () {
+		// 销毁命令池
+        vkDestroyCommandPool (device, commandPool, nullptr);
 		// 销毁交换链帧缓冲
         for (auto framebuffer : swapChainFramebuffers) {
             vkDestroyFramebuffer (device, framebuffer, nullptr);
@@ -872,6 +954,10 @@ private:
     VkPipelineLayout pipelineLayout;
 	// Vulkan图形管线
     VkPipeline graphicsPipeline;
+	// Vulkan命令池
+    VkCommandPool commandPool;
+	// Vulkan命令缓冲
+    VkCommandBuffer commandBuffer;
 };
 
 int main () {
