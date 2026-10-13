@@ -573,6 +573,23 @@ private:
         renderPassInfo.subpassCount = 1;
         renderPassInfo.pSubpasses = &subpass;
 
+        // 设置交换链呈现信息
+        VkSubpassDependency dependency{};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        // 设置源阶段掩码和访问掩码
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        // 设置目标阶段掩码和访问掩码
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        // 设置交换链呈现信息
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
+
         if (vkCreateRenderPass (device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
             throw std::runtime_error ("failed to create render pass!");
         }
@@ -797,6 +814,21 @@ private:
         }
     }
 
+    void createSyncObjects () {
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+        if (vkCreateSemaphore (device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+            vkCreateSemaphore (device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
+            vkCreateFence (device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to create semaphores!");
+        }
+    }
+
     void recordCommandBuffer (VkCommandBuffer commandBuffer, uint32_t imageIndex) {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -873,6 +905,59 @@ private:
         createFramebuffers ();
         createCommandPool ();
         createCommandBuffer ();
+        createSyncObjects ();
+    }
+
+    void drawFrame () {
+		// 等待上一帧的渲染完成
+        vkWaitForFences (device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+		// 重置上一帧的渲染完成信号量
+        vkResetFences (device, 1, &inFlightFence);
+
+		// 获取交换链图像索引
+        uint32_t imageIndex;
+        vkAcquireNextImageKHR (device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+		// 重置命令缓冲
+        vkResetCommandBuffer (commandBuffer, 0);
+		// 记录命令缓冲
+        recordCommandBuffer (commandBuffer, imageIndex);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+		// 提交命令缓冲
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+		// 设置渲染完成信号量
+        VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+		// 提交命令缓冲到图形队列
+        if (vkQueueSubmit (graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
+            throw std::runtime_error ("failed to submit draw command buffer!");
+        }
+
+		// 提交呈现信息到呈现队列
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		// 设置等待信号量
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+
+		// 设置交换链和图像索引
+        VkSwapchainKHR swapChains[] = { swapChain };
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+        presentInfo.pResults = nullptr; // Optional
+		// 提交呈现信息到呈现队列
+        vkQueuePresentKHR (presentQueue, &presentInfo);
     }
 
     void mainLoop () {
@@ -880,10 +965,18 @@ private:
         while (!glfwWindowShouldClose (window)) {
 			// 处理窗口事件
             glfwPollEvents ();
+            // 渲染帧
+            drawFrame ();
         }
+
+        vkDeviceWaitIdle (device);
     }
 
     void cleanup () {
+		// 销毁同步对象
+        vkDestroySemaphore (device, imageAvailableSemaphore, nullptr);
+        vkDestroySemaphore (device, renderFinishedSemaphore, nullptr);
+        vkDestroyFence (device, inFlightFence, nullptr);
 		// 销毁命令池
         vkDestroyCommandPool (device, commandPool, nullptr);
 		// 销毁交换链帧缓冲
@@ -958,6 +1051,10 @@ private:
     VkCommandPool commandPool;
 	// Vulkan命令缓冲
     VkCommandBuffer commandBuffer;
+	// 同步对象
+    VkSemaphore imageAvailableSemaphore;
+    VkSemaphore renderFinishedSemaphore;
+    VkFence inFlightFence;
 };
 
 int main () {
