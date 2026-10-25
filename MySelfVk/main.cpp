@@ -6,6 +6,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
@@ -18,6 +19,10 @@
 
 #include <set>
 #include <fstream>
+
+// 帧计数器
+uint64_t frameCounter = 0;
+auto lastTime = std::chrono::steady_clock::now();
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -823,9 +828,16 @@ private:
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
         if (vkCreateSemaphore (device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-            vkCreateSemaphore (device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
             vkCreateFence (device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
             throw std::runtime_error ("failed to create semaphores!");
+        }
+
+        renderFinishedSemaphores.resize(swapChainImages.size());
+        for (size_t i = 0; i < swapChainImages.size(); i++)
+        {
+            if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create synchronization objects for an image!");
+            }
         }
     }
 
@@ -934,7 +946,7 @@ private:
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffer;
 		// 设置渲染完成信号量
-        VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+        VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[imageIndex]};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -958,6 +970,17 @@ private:
         presentInfo.pResults = nullptr; // Optional
 		// 提交呈现信息到呈现队列
         vkQueuePresentKHR (presentQueue, &presentInfo);
+
+        // 统计帧数
+        frameCounter++;
+
+        auto now = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(now - lastTime).count();
+        if (elapsed >= 1.0) {
+            std::cout << "FPS: " << frameCounter / elapsed << std::endl;
+            frameCounter = 0;
+            lastTime = now;
+        }
     }
 
     void mainLoop () {
@@ -975,7 +998,10 @@ private:
     void cleanup () {
 		// 销毁同步对象
         vkDestroySemaphore (device, imageAvailableSemaphore, nullptr);
-        vkDestroySemaphore (device, renderFinishedSemaphore, nullptr);
+        for (auto renderFinishedSemaphore : renderFinishedSemaphores)
+        {
+            vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
+        }
         vkDestroyFence (device, inFlightFence, nullptr);
 		// 销毁命令池
         vkDestroyCommandPool (device, commandPool, nullptr);
@@ -1053,7 +1079,7 @@ private:
     VkCommandBuffer commandBuffer;
 	// 同步对象
     VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
     VkFence inFlightFence;
 };
 
