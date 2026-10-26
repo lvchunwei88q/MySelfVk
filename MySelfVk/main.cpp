@@ -199,6 +199,12 @@ private:
                 return availablePresentMode;
             }
         }
+        // 如果支持 VK_PRESENT_MODE_IMMEDIATE_KHR，则选择该模式
+        for (const auto& availablePresentMode : availablePresentModes) {
+            if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+                return availablePresentMode;
+            }
+        }
 		// 否则，返回 VK_PRESENT_MODE_FIFO_KHR，这是唯一保证可用的模式
         return VK_PRESENT_MODE_FIFO_KHR;
     }
