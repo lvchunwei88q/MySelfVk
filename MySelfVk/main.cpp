@@ -49,7 +49,8 @@ class HelloTriangleApplication {
     };
 
     const std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
     };
 
 #ifdef NDEBUG
@@ -240,6 +241,9 @@ private:
             extensions.push_back (VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
 
+        // 动态渲染的实例级依赖
+        extensions.push_back (VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+
         // 查询Vulkan支持的扩展
         uint32_t vk_extensionCount = 0;
         vkEnumerateInstanceExtensionProperties (nullptr, &vk_extensionCount, nullptr);
@@ -267,7 +271,7 @@ private:
         appInfo.applicationVersion = VK_MAKE_VERSION (1, 0, 0);
         appInfo.pEngineName = "No Engine";
         appInfo.engineVersion = VK_MAKE_VERSION (1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
+        appInfo.apiVersion = VK_API_VERSION_1_2;
 
 		// 创建Vulkan实例Info
         VkInstanceCreateInfo createInfo{};
@@ -433,9 +437,15 @@ private:
 
         VkPhysicalDeviceFeatures deviceFeatures{};
 
+        VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};
+        dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+        dynamicRenderingFeature.dynamicRendering = VK_TRUE;
+
 		// 创建逻辑设备创建信息
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.pNext = &dynamicRenderingFeature;
+
 		// 填入队列创建信息
         createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size ());
         createInfo.pQueueCreateInfos = queueCreateInfos.data ();
@@ -445,6 +455,7 @@ private:
         createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size ());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data ();
         createInfo.enabledLayerCount = 0;
+
        //     if (enableValidationLayers) {
 			    //// 启动验证层
        //         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size ());
@@ -460,6 +471,14 @@ private:
 
         vkGetDeviceQueue (device, indices.graphicsFamily.value (), 0, &graphicsQueue);
         vkGetDeviceQueue (device, indices.presentFamily.value (), 0, &presentQueue);
+
+        // 在 createLogicalDevice 之后，加载函数指针
+        pfnCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr (device, "vkCmdBeginRenderingKHR");
+        pfnCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr (device, "vkCmdEndRenderingKHR");
+
+        if (!pfnCmdBeginRenderingKHR || !pfnCmdEndRenderingKHR) {
+            throw std::runtime_error ("failed to load dynamic rendering function pointers!");
+        }
     }
 
     void createSwapChain () {
@@ -547,62 +566,6 @@ private:
             if (vkCreateImageView (device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
                 throw std::runtime_error ("failed to create image views!");
             }
-        }
-    }
-
-    void createRenderPass () {
-		// 创建渲染通道的颜色附件描述
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = swapChainImageFormat;
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-		// 设置加载操作为清除，存储操作为存储
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		// 设置模板加载和存储操作为不关心
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		// 设置初始布局为未定义，最终布局为呈现源
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-		// 创建渲染通道的颜色附件引用
-        VkAttachmentReference colorAttachmentRef{};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		// 创建子通道描述
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		// 设置子通道的颜色附件引用
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
-
-        VkRenderPassCreateInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-
-        // 设置交换链呈现信息
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        // 设置源阶段掩码和访问掩码
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask = 0;
-        // 设置目标阶段掩码和访问掩码
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        // 设置交换链呈现信息
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-        renderPassInfo.dependencyCount = 1;
-        renderPassInfo.pDependencies = &dependency;
-
-        if (vkCreateRenderPass (device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-            throw std::runtime_error ("failed to create render pass!");
         }
     }
 
@@ -746,8 +709,16 @@ private:
             throw std::runtime_error ("failed to create pipeline layout!");
         }
 
+        // 渲染的附件格式
+        VkPipelineRenderingCreateInfo renderingCreateInfo{};
+        renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        renderingCreateInfo.colorAttachmentCount = 1;
+        renderingCreateInfo.pColorAttachmentFormats = &swapChainImageFormat;
+
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.pNext = &renderingCreateInfo;
+
         pipelineInfo.stageCount = 2;
         pipelineInfo.pStages = shaderStages;
 		// 设置图形管线的各个状态信息
@@ -759,10 +730,8 @@ private:
         pipelineInfo.pDepthStencilState = nullptr; // Optional
         pipelineInfo.pColorBlendState = &colorBlending;
         pipelineInfo.pDynamicState = &dynamicState;
-		// 设置图形管线布局和渲染通道
+		// 设置图形管线布局
         pipelineInfo.layout = pipelineLayout;
-        pipelineInfo.renderPass = renderPass;
-        pipelineInfo.subpass = 0;
 		// 设置图形管线的基础管线信息
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
         pipelineInfo.basePipelineIndex = -1; // Optional
@@ -773,30 +742,6 @@ private:
 
         vkDestroyShaderModule (device, fragShaderModule, nullptr);
         vkDestroyShaderModule (device, vertShaderModule, nullptr);
-    }
-
-    void createFramebuffers () {
-		// 分配交换链帧缓冲列表的大小
-        swapChainFramebuffers.resize (swapChainImageViews.size ());
-
-        for (size_t i = 0; i < swapChainImageViews.size (); i++) {
-            VkImageView attachments[] = {
-                swapChainImageViews[i]
-            };
-
-            VkFramebufferCreateInfo framebufferInfo{};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = renderPass;
-            framebufferInfo.attachmentCount = 1;
-            framebufferInfo.pAttachments = attachments;
-            framebufferInfo.width = swapChainExtent.width;
-            framebufferInfo.height = swapChainExtent.height;
-            framebufferInfo.layers = 1;
-
-            if (vkCreateFramebuffer (device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error ("failed to create framebuffer!");
-            }
-        }
     }
 
     void createCommandPool () {
@@ -857,20 +802,41 @@ private:
             throw std::runtime_error ("failed to begin recording command buffer!");
         }
 
-		// 开始渲染通道信息
-        VkRenderPassBeginInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
-		// 设置渲染区域
-        renderPassInfo.renderArea.offset = { 0, 0 };
-        renderPassInfo.renderArea.extent = swapChainExtent;
-		// 设置清除颜色
-        VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
-		// 开始渲染通道
-        vkCmdBeginRenderPass (commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+        // ---- 布局转换 UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL ----
+        VkImageMemoryBarrier toColorBarrier{};
+        toColorBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toColorBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        toColorBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        toColorBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toColorBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toColorBarrier.image = swapChainImages[imageIndex];
+        toColorBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        toColorBarrier.srcAccessMask = 0;
+        toColorBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        vkCmdPipelineBarrier (commandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &toColorBarrier);
+
+        // ---- 开始动态渲染 ----
+        VkRenderingAttachmentInfo colorAttachment{};
+        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachment.imageView = swapChainImageViews[imageIndex];
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.clearValue = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
+        colorAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+
+        VkRenderingInfo renderingInfo{};
+        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        renderingInfo.renderArea = { {0, 0}, swapChainExtent };
+        renderingInfo.layerCount = 1;
+        renderingInfo.colorAttachmentCount = 1;
+        renderingInfo.pColorAttachments = &colorAttachment;
+
+        pfnCmdBeginRenderingKHR (commandBuffer, &renderingInfo);
 
 		// 绑定图形管线
         vkCmdBindPipeline (commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
@@ -891,8 +857,26 @@ private:
 		// 绘制三角形
         vkCmdDraw (commandBuffer, 3, 1, 0, 0);
 
-		// 结束渲染通道
-        vkCmdEndRenderPass (commandBuffer);
+        // 结束渲染
+        pfnCmdEndRenderingKHR (commandBuffer);
+
+        // ---- 布局转换 COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC ----
+        VkImageMemoryBarrier toPresentBarrier{};
+        toPresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toPresentBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        toPresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresentBarrier.image = swapChainImages[imageIndex];
+        toPresentBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        toPresentBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        toPresentBarrier.dstAccessMask = 0;
+
+        vkCmdPipelineBarrier (commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &toPresentBarrier);
+
 		// 结束记录命令缓冲
         if (vkEndCommandBuffer (commandBuffer) != VK_SUCCESS) {
             throw std::runtime_error ("failed to record command buffer!");
@@ -918,9 +902,7 @@ private:
         createLogicalDevice ();
         createSwapChain ();
         createImageViews ();
-        createRenderPass ();
         createGraphicsPipeline ();
-        createFramebuffers ();
         createCommandPool ();
         createCommandBuffer ();
         createSyncObjects ();
@@ -1011,16 +993,10 @@ private:
         vkDestroyFence (device, inFlightFence, nullptr);
 		// 销毁命令池
         vkDestroyCommandPool (device, commandPool, nullptr);
-		// 销毁交换链帧缓冲
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer (device, framebuffer, nullptr);
-        }
 		// 销毁图形管线
         vkDestroyPipeline (device, graphicsPipeline, nullptr);
 		// 销毁图形管线布局
         vkDestroyPipelineLayout (device, pipelineLayout, nullptr);
-		// 销毁图形管线
-        vkDestroyRenderPass (device, renderPass, nullptr);
 		// 销毁交换链图像视图
         for (auto imageView : swapChainImageViews) {
             vkDestroyImageView (device, imageView, nullptr);
@@ -1072,10 +1048,7 @@ private:
     VkExtent2D swapChainExtent;
 	// Vulkan交换链图像视图列表
     std::vector<VkImageView> swapChainImageViews;
-    // Vulkan交换链帧缓冲列表
-    std::vector<VkFramebuffer> swapChainFramebuffers;
-	// Vulkan图形管线布局与渲染Pass相关
-    VkRenderPass renderPass;
+	// Vulkan图形管线布局
     VkPipelineLayout pipelineLayout;
 	// Vulkan图形管线
     VkPipeline graphicsPipeline;
@@ -1087,6 +1060,10 @@ private:
     VkSemaphore imageAvailableSemaphore;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     VkFence inFlightFence;
+
+    // 动态渲染函数指针
+    PFN_vkCmdBeginRenderingKHR pfnCmdBeginRenderingKHR;
+    PFN_vkCmdEndRenderingKHR pfnCmdEndRenderingKHR;
 };
 
 int main () {
